@@ -12,6 +12,10 @@
 
 #include <new>
 #include <iterator>
+#include <type_traits>
+#include <tuple>
+#include <utility>
+#include <climits>
 
 _PSTL_HIDE_FROM_ABI_PUSH
 
@@ -28,53 +32,28 @@ __except_handler(_Fp __f) -> decltype(__f())
     {
         return __f();
     }
-    catch (const std::bad_alloc&)
+    catch (const ::std::bad_alloc&)
     {
         throw; // re-throw bad_alloc according to the standard [algorithms.parallel.exceptions]
     }
     catch (...)
     {
-        std::terminate(); // Good bye according to the standard [algorithms.parallel.exceptions]
+        ::std::terminate(); // Good bye according to the standard [algorithms.parallel.exceptions]
     }
 }
 
-template <typename _Fp>
-void
-__invoke_if(std::true_type, _Fp __f)
+template <typename _Op>
+struct __invoke_unary_op
 {
-    __f();
-}
+    mutable _Op __op;
 
-template <typename _Fp>
-void __invoke_if(std::false_type, _Fp)
-{
-}
-
-template <typename _Fp>
-void
-__invoke_if_not(std::false_type, _Fp __f)
-{
-    __f();
-}
-
-template <typename _Fp>
-void __invoke_if_not(std::true_type, _Fp)
-{
-}
-
-template <typename _F1, typename _F2>
-auto
-__invoke_if_else(std::true_type, _F1 __f1, _F2) -> decltype(__f1())
-{
-    return __f1();
-}
-
-template <typename _F1, typename _F2>
-auto
-__invoke_if_else(std::false_type, _F1, _F2 __f2) -> decltype(__f2())
-{
-    return __f2();
-}
+    template <typename _Input, typename _Output>
+    void
+    operator()(_Input&& __x, _Output&& __y) const
+    {
+        __y = __op(::std::forward<_Input>(__x));
+    }
+};
 
 //! Unary operator that returns reference to its argument.
 struct __no_op
@@ -83,26 +62,42 @@ struct __no_op
     _Tp&&
     operator()(_Tp&& __a) const
     {
-        return std::forward<_Tp>(__a);
+        return ::std::forward<_Tp>(__a);
+    }
+};
+
+//! Logical negation of a predicate
+template <typename _Pred>
+class __not_pred
+{
+    _Pred _M_pred;
+
+  public:
+    explicit __not_pred(_Pred __pred) : _M_pred(__pred) {}
+
+    template <typename... _Args>
+    bool
+    operator()(_Args&&... __args) const
+    {
+        return !_M_pred(::std::forward<_Args>(__args)...);
     }
 };
 
 template <typename _Pred>
 class __reorder_pred
 {
-    _Pred _M_pred;
+    mutable _Pred _M_pred;
 
   public:
     explicit __reorder_pred(_Pred __pred) : _M_pred(__pred) {}
 
     template <typename _FTp, typename _STp>
     bool
-    operator()(_FTp&& __a, _STp&& __b)
+    operator()(_FTp&& __a, _STp&& __b) const
     {
-        return _M_pred(std::forward<_STp>(__b), std::forward<_FTp>(__a));
+        return _M_pred(::std::forward<_STp>(__b), ::std::forward<_FTp>(__a));
     }
 };
-
 //! Like a polymorphic lambda for pred(...,value)
 template <typename _Tp, typename _Predicate>
 class __equal_value_by_pred
@@ -115,9 +110,9 @@ class __equal_value_by_pred
 
     template <typename _Arg>
     bool
-    operator()(_Arg&& __arg)
+    operator()(_Arg&& __arg) const
     {
-        return _M_pred(std::forward<_Arg>(__arg), _M_value);
+        return _M_pred(::std::forward<_Arg>(__arg), _M_value);
     }
 };
 
@@ -134,7 +129,7 @@ class __equal_value
     bool
     operator()(_Arg&& __arg) const
     {
-        return std::forward<_Arg>(__arg) == _M_value;
+        return ::std::forward<_Arg>(__arg) == _M_value;
     }
 };
 
@@ -151,15 +146,15 @@ class __not_equal_value
     bool
     operator()(_Arg&& __arg) const
     {
-        return !(std::forward<_Arg>(__arg) == _M_value);
+        return !(::std::forward<_Arg>(__arg) == _M_value);
     }
 };
 
-template <typename _ForwardIterator, typename _Compare>
+template <typename _ForwardIterator, typename _Compare, typename _CompareIt>
 _ForwardIterator
-__cmp_iterators_by_values(_ForwardIterator __a, _ForwardIterator __b, _Compare __comp)
+__cmp_iterators_by_values(_ForwardIterator __a, _ForwardIterator __b, _Compare __comp, _CompareIt __comp_it)
 {
-    if (__a < __b)
+    if (__comp_it(__a, __b))
     { // we should return closer iterator
         return __comp(*__b, *__a) ? __b : __a;
     }

@@ -10,6 +10,7 @@
 #ifndef _PSTL_PARALLEL_BACKEND_UTILS_H
 #define _PSTL_PARALLEL_BACKEND_UTILS_H
 
+#include <cassert>
 #include <iterator>
 #include <utility>
 #include "utils.h"
@@ -31,7 +32,7 @@ struct __serial_destroy
     void
     operator()(_RandomAccessIterator __zs, _RandomAccessIterator __ze)
     {
-        typedef typename std::iterator_traits<_RandomAccessIterator>::value_type _ValueType;
+        typedef typename ::std::iterator_traits<_RandomAccessIterator>::value_type _ValueType;
         while (__zs != __ze)
         {
             --__ze;
@@ -40,12 +41,12 @@ struct __serial_destroy
     }
 };
 
-//! Merge sequences [__xs,__xe) and [__ys,__ye) to output sequence [__zs,(__xe-__xs)+(__ye-__ys)), using std::move
+//! Merge sequences [__xs,__xe) and [__ys,__ye) to output sequence [__zs,(__xe-__xs)+(__ye-__ys)), using ::std::move
 struct __serial_move_merge
 {
-    const std::size_t _M_nmerge;
+    const ::std::size_t _M_nmerge;
 
-    explicit __serial_move_merge(std::size_t __nmerge) : _M_nmerge(__nmerge) {}
+    explicit __serial_move_merge(::std::size_t __nmerge) : _M_nmerge(__nmerge) {}
     template <class _RandomAccessIterator1, class _RandomAccessIterator2, class _RandomAccessIterator3, class _Compare,
               class _MoveValueX, class _MoveValueY, class _MoveSequenceX, class _MoveSequenceY>
     void
@@ -53,11 +54,11 @@ struct __serial_move_merge
                _RandomAccessIterator2 __ye, _RandomAccessIterator3 __zs, _Compare __comp, _MoveValueX __move_value_x,
                _MoveValueY __move_value_y, _MoveSequenceX __move_sequence_x, _MoveSequenceY __move_sequence_y)
     {
-        constexpr bool __same_move_val = std::is_same<_MoveValueX, _MoveValueY>::value;
-        constexpr bool __same_move_seq = std::is_same<_MoveSequenceX, _MoveSequenceY>::value;
+        constexpr bool __same_move_val = ::std::is_same_v<_MoveValueX, _MoveValueY>;
+        constexpr bool __same_move_seq = ::std::is_same_v<_MoveSequenceX, _MoveSequenceY>;
 
         auto __n = _M_nmerge;
-        _PSTL_ASSERT(__n > 0);
+        assert(__n > 0);
 
         auto __nx = __xe - __xs;
         //auto __ny = __ye - __ys;
@@ -144,7 +145,7 @@ __set_union_construct(_ForwardIterator1 __first1, _ForwardIterator1 __last1, _Fo
                       _ForwardIterator2 __last2, _OutputIterator __result, _Compare __comp,
                       _CopyConstructRange __cc_range)
 {
-    using _Tp = typename std::iterator_traits<_OutputIterator>::value_type;
+    using _Tp = typename ::std::iterator_traits<_OutputIterator>::value_type;
 
     for (; __first1 != __last1; ++__result)
     {
@@ -152,12 +153,12 @@ __set_union_construct(_ForwardIterator1 __first1, _ForwardIterator1 __last1, _Fo
             return __cc_range(__first1, __last1, __result);
         if (__comp(*__first2, *__first1))
         {
-            ::new (std::addressof(*__result)) _Tp(*__first2);
+            ::new (::std::addressof(*__result)) _Tp(*__first2);
             ++__first2;
         }
         else
         {
-            ::new (std::addressof(*__result)) _Tp(*__first1);
+            ::new (::std::addressof(*__result)) _Tp(*__first1);
             if (!__comp(*__first1, *__first2))
                 ++__first2;
             ++__first1;
@@ -171,7 +172,7 @@ _OutputIterator
 __set_intersection_construct(_ForwardIterator1 __first1, _ForwardIterator1 __last1, _ForwardIterator2 __first2,
                              _ForwardIterator2 __last2, _OutputIterator __result, _Compare __comp)
 {
-    using _Tp = typename std::iterator_traits<_OutputIterator>::value_type;
+    using _Tp = typename ::std::iterator_traits<_OutputIterator>::value_type;
 
     for (; __first1 != __last1 && __first2 != __last2;)
     {
@@ -181,7 +182,7 @@ __set_intersection_construct(_ForwardIterator1 __first1, _ForwardIterator1 __las
         {
             if (!__comp(*__first2, *__first1))
             {
-                ::new (std::addressof(*__result)) _Tp(*__first1);
+                ::new (::std::addressof(*__result)) _Tp(*__first1);
                 ++__result;
                 ++__first1;
             }
@@ -198,7 +199,7 @@ __set_difference_construct(_ForwardIterator1 __first1, _ForwardIterator1 __last1
                            _ForwardIterator2 __last2, _OutputIterator __result, _Compare __comp,
                            _CopyConstructRange __cc_range)
 {
-    using _Tp = typename std::iterator_traits<_OutputIterator>::value_type;
+    using _Tp = typename ::std::iterator_traits<_OutputIterator>::value_type;
 
     for (; __first1 != __last1;)
     {
@@ -207,7 +208,7 @@ __set_difference_construct(_ForwardIterator1 __first1, _ForwardIterator1 __last1
 
         if (__comp(*__first1, *__first2))
         {
-            ::new (std::addressof(*__result)) _Tp(*__first1);
+            ::new (::std::addressof(*__result)) _Tp(*__first1);
             ++__result;
             ++__first1;
         }
@@ -227,7 +228,7 @@ __set_symmetric_difference_construct(_ForwardIterator1 __first1, _ForwardIterato
                                      _ForwardIterator2 __last2, _OutputIterator __result, _Compare __comp,
                                      _CopyConstructRange __cc_range)
 {
-    using _Tp = typename std::iterator_traits<_OutputIterator>::value_type;
+    using _Tp = typename ::std::iterator_traits<_OutputIterator>::value_type;
 
     for (; __first1 != __last1;)
     {
@@ -236,7 +237,7 @@ __set_symmetric_difference_construct(_ForwardIterator1 __first1, _ForwardIterato
 
         if (__comp(*__first1, *__first2))
         {
-            ::new (std::addressof(*__result)) _Tp(*__first1);
+            ::new (::std::addressof(*__result)) _Tp(*__first1);
             ++__result;
             ++__first1;
         }
@@ -244,7 +245,7 @@ __set_symmetric_difference_construct(_ForwardIterator1 __first1, _ForwardIterato
         {
             if (__comp(*__first2, *__first1))
             {
-                ::new (std::addressof(*__result)) _Tp(*__first2);
+                ::new (::std::addressof(*__result)) _Tp(*__first2);
                 ++__result;
             }
             else

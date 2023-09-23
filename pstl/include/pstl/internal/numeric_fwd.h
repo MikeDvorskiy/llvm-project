@@ -107,6 +107,12 @@ typename std::enable_if<std::is_floating_point<_Tp>::value, _OutputIterator>::ty
 __pattern_transform_scan(__parallel_tag<_IsVector>, _ExecutionPolicy&&, _RandomAccessIterator, _RandomAccessIterator,
                          _OutputIterator, _UnaryOperation, _Tp, _BinaryOperation, _Inclusive);
 
+// transform_scan without initial element
+template <class _Tag, class _ExecutionPolicy, class _ForwardIterator, class _OutputIterator, class _UnaryOperation,
+          class _BinaryOperation, class _Inclusive, class _IsVector, class _IsParallel>
+_OutputIterator
+__pattern_transform_scan(_Tag, _ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last,
+                         _OutputIterator __result, _UnaryOperation __unary_op, _BinaryOperation __binary_op, _Inclusive);
 //------------------------------------------------------------------------
 // adjacent_difference
 //------------------------------------------------------------------------

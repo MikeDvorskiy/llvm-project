@@ -185,17 +185,13 @@ __pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _ForwardItera
 transform_inclusive_scan(_ExecutionPolicy&& __exec, _ForwardIterator1 __first, _ForwardIterator1 __last,
                          _ForwardIterator2 __result, _BinaryOperation __binary_op, _UnaryOperation __unary_op)
 {
-    if (__first != __last)
-    {
-        auto __tmp = __unary_op(*__first);
-        *__result = __tmp;
-        return transform_inclusive_scan(std::forward<_ExecutionPolicy>(__exec), ++__first, __last, ++__result,
-                                        __binary_op, __unary_op, __tmp);
-    }
-    else
-    {
-        return __result;
-    }
+    return oneapi::dpl::__internal::__pattern_transform_scan(
+        ::std::forward<_ExecutionPolicy>(__exec), __first, __last, __result, __unary_op, __binary_op,
+        /*inclusive=*/::std::true_type(),
+        oneapi::dpl::__internal::__is_vectorization_preferred<_ExecutionPolicy, _ForwardIterator1, _ForwardIterator2>(
+            __exec),
+        oneapi::dpl::__internal::__is_parallelization_preferred<_ExecutionPolicy, _ForwardIterator1, _ForwardIterator2>(
+            __exec));
 }
 
 // [adjacent.difference]
