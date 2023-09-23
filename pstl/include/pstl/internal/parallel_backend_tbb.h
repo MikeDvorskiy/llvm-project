@@ -10,13 +10,14 @@
 #ifndef _PSTL_PARALLEL_BACKEND_TBB_H
 #define _PSTL_PARALLEL_BACKEND_TBB_H
 
+#include <cassert>
 #include <algorithm>
 #include <type_traits>
 
 #include "pstl_config.h"
 #include "parallel_backend_utils.h"
 
-// Bring in minimal required subset of Intel TBB
+// Bring in minimal required subset of Intel(R) Threading Building Blocks (Intel(R) TBB)
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_reduce.h>
@@ -24,7 +25,9 @@
 #include <tbb/parallel_invoke.h>
 #include <tbb/task_arena.h>
 #include <tbb/tbb_allocator.h>
-#include <tbb/task.h>
+#if TBB_INTERFACE_VERSION > 12000
+#    include <tbb/task.h>
+#endif
 
 #if TBB_INTERFACE_VERSION < 10000
 #    error Intel(R) Threading Building Blocks 2018 is required; older versions are not supported.
@@ -184,7 +187,7 @@ struct __par_trans_red_body
             new (&_M_sum_storage)
                 _Tp(_M_combine(_M_u(__i), _M_u(__i + 1))); // The condition i+1 < j is provided by the grain size of 3
             _M_has_sum = true;
-            std::advance(__i, 2);
+            ::std::advance(__i, 2);
             if (__i == __j)
                 return;
         }
@@ -198,7 +201,7 @@ __parallel_transform_reduce(__pstl::__internal::__tbb_backend_tag, _ExecutionPol
                             _Up __u, _Tp __init, _Cp __combine, _Rp __brick_reduce)
 {
     __tbb_backend::__par_trans_red_body<_Index, _Up, _Tp, _Cp, _Rp> __body(__u, __init, __combine, __brick_reduce);
-    // The grain size of 3 is used in order to provide mininum 2 elements for each body
+    // The grain size of 3 is used in order to provide minimum 2 elements for each body
     tbb::this_task_arena::isolate(
         [__first, __last, &__body]() { tbb::parallel_reduce(tbb::blocked_range<_Index>(__first, __last, 3), __body); });
     return __body.sum();
@@ -300,6 +303,12 @@ __split(_Index __m)
 //------------------------------------------------------------------------
 // __parallel_strict_scan
 //------------------------------------------------------------------------
+
+// TODO: Here are improvements to consider:
+// 1. Affinitize leaves of upsweep and leaves of downsweep.  For working sets that
+//    fit in cache, this might reduce memory interconnect load significantly.
+// 2. Add automatic tilesize adjustment.  Initial stealing during upsweep ought to provide a good hint.
+// 3. Use continuation-passing style for the tasks.  For downsweep, a binomial tree pattern is likely optimal.
 
 template <typename _Index, typename _Tp, typename _Rp, typename _Cp>
 void
@@ -430,14 +439,14 @@ class __task : public tbb::task
     __task*
     make_continuation(_Fn&& __f)
     {
-        return new (allocate_continuation()) __func_task<typename std::decay<_Fn>::type>(std::forward<_Fn>(__f));
+        return new (allocate_continuation()) __func_task<::std::decay_t<_Fn>>(::std::forward<_Fn>(__f));
     }
 
     template <typename _Fn>
     __task*
     make_child_of(__task* parent, _Fn&& __f)
     {
-        return new (parent->allocate_child()) __func_task<typename std::decay<_Fn>::type>(std::forward<_Fn>(__f));
+        return new (parent->allocate_child()) __func_task<::std::decay_t<_Fn>>(::std::forward<_Fn>(__f));
     }
 
     template <typename _Fn>
@@ -445,7 +454,7 @@ class __task : public tbb::task
     make_additional_child_of(tbb::task* parent, _Fn&& __f)
     {
         return new (tbb::task::allocate_additional_child_of(*parent))
-            __func_task<typename std::decay<_Fn>::type>(std::forward<_Fn>(__f));
+            __func_task<::std::decay_t<_Fn>>(::std::forward<_Fn>(__f));
     }
 
     inline void
@@ -487,7 +496,7 @@ class __func_task : public __task
 
   public:
     template <typename _Fn>
-    __func_task(_Fn&& __f) : _M_func{std::forward<_Fn>(__f)}
+    __func_task(_Fn&& __f) : _M_func{::std::forward<_Fn>(__f)}
     {
     }
 
@@ -506,7 +515,7 @@ class __root_task
   public:
     template <typename... Args>
     __root_task(Args&&... args)
-        : _M_task{new (tbb::task::allocate_root()) __func_task<_Func>{_Func(std::forward<Args>(args)...)}}
+        : _M_task{new (tbb::task::allocate_root()) __func_task<_Func>{_Func(::std::forward<Args>(args)...)}}
     {
     }
 
@@ -521,17 +530,16 @@ class __task : public tbb::detail::d1::task
     tbb::detail::d1::small_object_allocator _M_allocator{};
     tbb::detail::d1::execution_data* _M_execute_data{};
     __task* _M_parent{};
-    std::atomic<int> _M_refcount{};
+    ::std::atomic<int> _M_refcount{};
     bool _M_recycle{};
 
     template <typename _Fn>
     __task*
     allocate_func_task(_Fn&& __f)
     {
-        _PSTL_ASSERT(_M_execute_data != nullptr);
+        assert(_M_execute_data != nullptr);
         tbb::detail::d1::small_object_allocator __alloc{};
-        auto __t =
-            __alloc.new_object<__func_task<typename std::decay<_Fn>::type>>(*_M_execute_data, std::forward<_Fn>(__f));
+        auto __t = __alloc.new_object<__func_task<::std::decay_t<_Fn>>>(*_M_execute_data, ::std::forward<_Fn>(__f));
         __t->_M_allocator = __alloc;
         return __t;
     }
@@ -546,14 +554,14 @@ class __task : public tbb::detail::d1::task
     void
     set_ref_count(int __n)
     {
-        _M_refcount.store(__n, std::memory_order_release);
+        _M_refcount.store(__n, ::std::memory_order_release);
     }
 
     template <typename _Fn>
     __task*
     make_continuation(_Fn&& __f)
     {
-        auto __t = allocate_func_task(std::forward<_Fn&&>(__f));
+        auto __t = allocate_func_task(::std::forward<_Fn&&>(__f));
         __t->_M_parent = _M_parent;
         _M_parent = nullptr;
         return __t;
@@ -563,7 +571,7 @@ class __task : public tbb::detail::d1::task
     __task*
     make_child_of(__task* __parent, _Fn&& __f)
     {
-        auto __t = allocate_func_task(std::forward<_Fn&&>(__f));
+        auto __t = allocate_func_task(::std::forward<_Fn&&>(__f));
         __t->_M_parent = __parent;
         return __t;
     }
@@ -572,8 +580,8 @@ class __task : public tbb::detail::d1::task
     __task*
     make_additional_child_of(__task* __parent, _Fn&& __f)
     {
-        auto __t = make_child_of(__parent, std::forward<_Fn>(__f));
-        _PSTL_ASSERT(__parent->_M_refcount.load(std::memory_order_relaxed) > 0);
+        auto __t = make_child_of(__parent, ::std::forward<_Fn>(__f));
+        assert(__parent->_M_refcount.load(::std::memory_order_relaxed) > 0);
         ++__parent->_M_refcount;
         return __t;
     }
@@ -594,7 +602,7 @@ class __task : public tbb::detail::d1::task
     inline void
     spawn(__task* __t)
     {
-        _PSTL_ASSERT(_M_execute_data != nullptr);
+        assert(_M_execute_data != nullptr);
         tbb::detail::d1::spawn(*__t, *_M_execute_data->context);
     }
 
@@ -625,7 +633,7 @@ class __func_task : public __task
     };
 
     __task*
-    cancel(tbb::detail::d1::execution_data& __ed) override
+    cancel(tbb::detail::d1::execution_data&) override
     {
         return finalize(nullptr);
     }
@@ -647,11 +655,11 @@ class __func_task : public __task
 
         this->~__func_task();
 
-        _PSTL_ASSERT(__parent != nullptr);
-        _PSTL_ASSERT(__parent->_M_refcount.load(std::memory_order_relaxed) > 0);
+        assert(__parent != nullptr);
+        assert(__parent->_M_refcount.load(::std::memory_order_relaxed) > 0);
         if (--__parent->_M_refcount == 0)
         {
-            _PSTL_ASSERT(__next == nullptr);
+            assert(__next == nullptr);
             __alloc.deallocate(this, *__ed);
             return __parent;
         }
@@ -663,7 +671,7 @@ class __func_task : public __task
 
   public:
     template <typename _Fn>
-    __func_task(_Fn&& __f) : _M_func(std::forward<_Fn>(__f))
+    __func_task(_Fn&& __f) : _M_func(::std::forward<_Fn>(__f))
     {
     }
 
@@ -678,14 +686,14 @@ template <typename _Func>
 class __root_task : public __task
 {
     __task*
-    execute(tbb::detail::d1::execution_data& __ed) override
+    execute(tbb::detail::d1::execution_data&) override
     {
         _M_wait_object.release();
         return nullptr;
     };
 
     __task*
-    cancel(tbb::detail::d1::execution_data& __ed) override
+    cancel(tbb::detail::d1::execution_data&) override
     {
         _M_wait_object.release();
         return nullptr;
@@ -700,10 +708,10 @@ class __root_task : public __task
     __root_task(Args&&... args) : _M_wait_object{1}
     {
         tbb::detail::d1::small_object_allocator __alloc{};
-        _M_func_task = __alloc.new_object<__func_task<_Func>>(_Func(std::forward<Args>(args)...));
+        _M_func_task = __alloc.new_object<__func_task<_Func>>(_Func(::std::forward<Args>(args)...));
         _M_func_task->_M_allocator = __alloc;
         _M_func_task->_M_parent = this;
-        _M_refcount.store(1, std::memory_order_relaxed);
+        _M_refcount.store(1, ::std::memory_order_relaxed);
     }
 
     friend class __task;
@@ -714,10 +722,10 @@ template <typename _RandomAccessIterator1, typename _RandomAccessIterator2, type
           typename _LeafMerge>
 class __merge_func
 {
-    typedef typename std::iterator_traits<_RandomAccessIterator1>::difference_type _DifferenceType1;
-    typedef typename std::iterator_traits<_RandomAccessIterator2>::difference_type _DifferenceType2;
-    typedef typename std::common_type<_DifferenceType1, _DifferenceType2>::type _SizeType;
-    typedef typename std::iterator_traits<_RandomAccessIterator1>::value_type _ValueType;
+    typedef typename ::std::iterator_traits<_RandomAccessIterator1>::difference_type _DifferenceType1;
+    typedef typename ::std::iterator_traits<_RandomAccessIterator2>::difference_type _DifferenceType2;
+    typedef typename ::std::common_type_t<_DifferenceType1, _DifferenceType2> _SizeType;
+    typedef typename ::std::iterator_traits<_RandomAccessIterator1>::value_type _ValueType;
 
     _RandomAccessIterator1 _M_x_beg;
     _RandomAccessIterator2 _M_z_beg;
@@ -734,13 +742,7 @@ class __merge_func
     bool _root;   //means a task is merging root task
     bool _x_orig; //"true" means X(or left ) subrange is in the original container; false - in the buffer
     bool _y_orig; //"true" means Y(or right) subrange is in the original container; false - in the buffer
-    bool _split; //"true" means a merge task is a split task for parallel merging, the execution logic differs
-
-    bool
-    is_partial() const
-    {
-        return _M_nsort > 0;
-    }
+    bool _split;  //"true" means a merge task is a split task for parallel merging, the execution logic differs
 
     struct __move_value
     {
@@ -748,7 +750,7 @@ class __merge_func
         void
         operator()(Iterator1 __x, Iterator2 __z)
         {
-            *__z = std::move(*__x);
+            *__z = ::std::move(*__x);
         }
     };
 
@@ -758,7 +760,7 @@ class __merge_func
         void
         operator()(Iterator1 __x, Iterator2 __z)
         {
-            ::new (std::addressof(*__z)) _ValueType(std::move(*__x));
+            ::new (::std::addressof(*__z)) _ValueType(::std::move(*__x));
         }
     };
 
@@ -769,13 +771,13 @@ class __merge_func
         operator()(Iterator1 __first1, Iterator1 __last1, Iterator2 __first2)
         {
             if (__last1 - __first1 < __merge_cut_off)
-                return std::move(__first1, __last1, __first2);
+                return ::std::move(__first1, __last1, __first2);
 
             auto __n = __last1 - __first1;
             tbb::parallel_for(tbb::blocked_range<_SizeType>(0, __n, __merge_cut_off),
                               [__first1, __first2](const tbb::blocked_range<_SizeType>& __range) {
-                                  std::move(__first1 + __range.begin(), __first1 + __range.end(),
-                                            __first2 + __range.begin());
+                                  ::std::move(__first1 + __range.begin(), __first1 + __range.end(),
+                                              __first2 + __range.begin());
                               });
             return __first2 + __n;
         }
@@ -827,9 +829,9 @@ class __merge_func
     __merge_func(_SizeType __xs, _SizeType __xe, _SizeType __ys, _SizeType __ye, _SizeType __zs, _Compare __comp,
                  _Cleanup, _LeafMerge __leaf_merge, _SizeType __nsort, _RandomAccessIterator1 __x_beg,
                  _RandomAccessIterator2 __z_beg, bool __x_orig, bool __y_orig, bool __root)
-        : _M_xs(__xs), _M_xe(__xe), _M_ys(__ys), _M_ye(__ye), _M_zs(__zs), _M_x_beg(__x_beg), _M_z_beg(__z_beg),
-          _M_comp(__comp), _M_leaf_merge(__leaf_merge), _M_nsort(__nsort), _root(__root),
-          _x_orig(__x_orig), _y_orig(__y_orig), _split(false)
+        : _M_x_beg(__x_beg), _M_z_beg(__z_beg), _M_xs(__xs), _M_xe(__xe), _M_ys(__ys), _M_ye(__ye), _M_zs(__zs),
+          _M_comp(__comp), _M_leaf_merge(__leaf_merge), _M_nsort(__nsort), _root(__root), _x_orig(__x_orig),
+          _y_orig(__y_orig), _split(false)
     {
     }
 
@@ -861,37 +863,42 @@ class __merge_func
     bool
     x_less_y()
     {
-        const auto __nx = (_M_xe - _M_xs);
-        const auto __ny = (_M_ye - _M_ys);
-        _PSTL_ASSERT(__nx > 0 && __ny > 0);
+        auto __nx = (_M_xe - _M_xs);
+        auto __ny = (_M_ye - _M_ys);
 
-        _PSTL_ASSERT(_x_orig == _y_orig);
-        _PSTL_ASSERT(!is_partial());
+        assert(__nx > 0 && __ny > 0);
+        assert(_M_nsort > 0);
+
+        auto __kx = ::std::min(_M_nsort, __nx);
+        auto __ky = ::std::min(_M_nsort, __ny);
+
+        assert(_x_orig == _y_orig);
 
         if (_x_orig)
         {
-            _PSTL_ASSERT(std::is_sorted(_M_x_beg + _M_xs, _M_x_beg + _M_xe, _M_comp));
-            _PSTL_ASSERT(std::is_sorted(_M_x_beg + _M_ys, _M_x_beg + _M_ye, _M_comp));
-            return !_M_comp(*(_M_x_beg + _M_ys), *(_M_x_beg + _M_xe - 1));
+            assert(::std::is_sorted(_M_x_beg + _M_xs, _M_x_beg + _M_xs + __kx, _M_comp));
+            assert(::std::is_sorted(_M_x_beg + _M_ys, _M_x_beg + _M_ys + __ky, _M_comp));
+            return !_M_comp(*(_M_x_beg + _M_ys), *(_M_x_beg + _M_xs + __kx - 1));
         }
 
-        _PSTL_ASSERT(std::is_sorted(_M_z_beg + _M_xs, _M_z_beg + _M_xe, _M_comp));
-        _PSTL_ASSERT(std::is_sorted(_M_z_beg + _M_ys, _M_z_beg + _M_ye, _M_comp));
-        return !_M_comp(*(_M_z_beg + _M_zs + __nx), *(_M_z_beg + _M_zs + __nx - 1));
+        assert(::std::is_sorted(_M_z_beg + _M_xs, _M_z_beg + _M_xs + __kx, _M_comp));
+        assert(::std::is_sorted(_M_z_beg + _M_ys, _M_z_beg + _M_ys + __ky, _M_comp));
+        return !_M_comp(*(_M_z_beg + _M_zs + __nx), *(_M_z_beg + _M_zs + __kx - 1));
     }
     void
     move_x_range()
     {
         const auto __nx = (_M_xe - _M_xs);
         const auto __ny = (_M_ye - _M_ys);
-        _PSTL_ASSERT(__nx > 0 && __ny > 0);
+        assert(__nx > 0 && __ny > 0);
 
         if (_x_orig)
             __move_range_construct()(_M_x_beg + _M_xs, _M_x_beg + _M_xe, _M_z_beg + _M_zs);
         else
         {
             __move_range()(_M_z_beg + _M_zs, _M_z_beg + _M_zs + __nx, _M_x_beg + _M_xs);
-            __cleanup_range()(_M_z_beg + _M_zs, _M_z_beg + _M_zs + __nx);
+            if constexpr (!::std::is_trivially_destructible_v<_ValueType>)
+                __cleanup_range()(_M_z_beg + _M_zs, _M_z_beg + _M_zs + __nx);
         }
 
         _x_orig = !_x_orig;
@@ -907,7 +914,8 @@ class __merge_func
         else
         {
             __move_range()(_M_z_beg + _M_zs + __nx, _M_z_beg + _M_zs + __nx + __ny, _M_x_beg + _M_ys);
-            __cleanup_range()(_M_z_beg + _M_zs + __nx, _M_z_beg + _M_zs + __nx + __ny);
+            if constexpr (!::std::is_trivially_destructible_v<_ValueType>)
+                __cleanup_range()(_M_z_beg + _M_zs + __nx, _M_z_beg + _M_zs + __nx + __ny);
         }
 
         _y_orig = !_y_orig;
@@ -915,7 +923,8 @@ class __merge_func
     __task*
     merge_ranges(__task* __self)
     {
-        _PSTL_ASSERT(_x_orig == _y_orig); //two merged subrange must be lie into the same buffer
+        assert(_M_nsort > 0);
+        assert(_x_orig == _y_orig); //two merged subrange must be lie into the same buffer
 
         const auto __nx = (_M_xe - _M_xs);
         const auto __ny = (_M_ye - _M_ys);
@@ -931,24 +940,21 @@ class __merge_func
             _M_leaf_merge(_M_x_beg + _M_xs, _M_x_beg + _M_xe, _M_x_beg + _M_ys, _M_x_beg + _M_ye, _M_z_beg + _M_zs,
                           _M_comp, __move_value_construct(), __move_value_construct(), __move_range_construct(),
                           __move_range_construct());
-            _PSTL_ASSERT(parent_merge(__self)); //not root merging task
+            assert(parent_merge(__self)); //not root merging task
         }
         //merge to "origin"
         else
         {
-            _PSTL_ASSERT(_x_orig == _y_orig);
-
-            _PSTL_ASSERT(is_partial() || std::is_sorted(_M_z_beg + _M_xs, _M_z_beg + _M_xe, _M_comp));
-            _PSTL_ASSERT(is_partial() || std::is_sorted(_M_z_beg + _M_ys, _M_z_beg + _M_ye, _M_comp));
-
-            const auto __nx = (_M_xe - _M_xs);
-            const auto __ny = (_M_ye - _M_ys);
+            assert(_x_orig == _y_orig);
 
             _M_leaf_merge(_M_z_beg + _M_xs, _M_z_beg + _M_xe, _M_z_beg + _M_ys, _M_z_beg + _M_ye, _M_x_beg + _M_zs,
                           _M_comp, __move_value(), __move_value(), __move_range(), __move_range());
 
-            __cleanup_range()(_M_z_beg + _M_xs, _M_z_beg + _M_xe);
-            __cleanup_range()(_M_z_beg + _M_ys, _M_z_beg + _M_ye);
+            if constexpr (!::std::is_trivially_destructible_v<_ValueType>)
+            {
+                __cleanup_range()(_M_z_beg + _M_xs, _M_z_beg + _M_xe);
+                __cleanup_range()(_M_z_beg + _M_ys, _M_z_beg + _M_ye);
+            }
         }
         return nullptr;
     }
@@ -956,8 +962,8 @@ class __merge_func
     __task*
     process_ranges(__task* __self)
     {
-        _PSTL_ASSERT(_x_orig == _y_orig);
-        _PSTL_ASSERT(!_split);
+        assert(_x_orig == _y_orig);
+        assert(!_split);
 
         auto p = parent_merge(__self);
 
@@ -965,7 +971,7 @@ class __merge_func
         { //root merging task
 
             //optimization, just for sort algorithm, //{x} <= {y}
-            if (!is_partial() && x_less_y()) //we have a solution
+            if (x_less_y()) //we have a solution
             {
                 if (!_x_orig)
                 {                   //we have to move the solution to the origin
@@ -986,7 +992,7 @@ class __merge_func
         }
         //else: not root merging task (parent_merge() == NULL)
         //optimization, just for sort algorithm, //{x} <= {y}
-        if (!is_partial() && x_less_y())
+        if (x_less_y())
         {
             const auto id_range = _M_zs;
             p->set_odd(id_range, _x_orig);
@@ -1003,36 +1009,41 @@ class __merge_func
     __task*
     split_merging(__task* __self)
     {
-        _PSTL_ASSERT(_x_orig == _y_orig);
+        assert(_x_orig == _y_orig);
+
         const auto __nx = (_M_xe - _M_xs);
         const auto __ny = (_M_ye - _M_ys);
-
         _SizeType __xm{};
         _SizeType __ym{};
+
         if (__nx < __ny)
         {
             __ym = _M_ys + __ny / 2;
 
             if (_x_orig)
-                __xm = std::upper_bound(_M_x_beg + _M_xs, _M_x_beg + _M_xe, *(_M_x_beg + __ym), _M_comp) - _M_x_beg;
+                __xm = ::std::upper_bound(_M_x_beg + _M_xs, _M_x_beg + _M_xs + __nx, *(_M_x_beg + __ym), _M_comp) -
+                       _M_x_beg;
             else
-                __xm = std::upper_bound(_M_z_beg + _M_xs, _M_z_beg + _M_xe, *(_M_z_beg + __ym), _M_comp) - _M_z_beg;
+                __xm = ::std::upper_bound(_M_z_beg + _M_xs, _M_z_beg + _M_xs + __nx, *(_M_z_beg + __ym), _M_comp) -
+                       _M_z_beg;
         }
         else
         {
             __xm = _M_xs + __nx / 2;
 
             if (_y_orig)
-                __ym = std::lower_bound(_M_x_beg + _M_ys, _M_x_beg + _M_ye, *(_M_x_beg + __xm), _M_comp) - _M_x_beg;
+                __ym = ::std::lower_bound(_M_x_beg + _M_ys, _M_x_beg + _M_ys + __ny, *(_M_x_beg + __xm), _M_comp) -
+                       _M_x_beg;
             else
-                __ym = std::lower_bound(_M_z_beg + _M_ys, _M_z_beg + _M_ye, *(_M_z_beg + __xm), _M_comp) - _M_z_beg;
+                __ym = ::std::lower_bound(_M_z_beg + _M_ys, _M_z_beg + _M_ys + __ny, *(_M_z_beg + __xm), _M_comp) -
+                       _M_z_beg;
         }
 
         auto __zm = _M_zs + ((__xm - _M_xs) + (__ym - _M_ys));
         __merge_func __right_func(__xm, _M_xe, __ym, _M_ye, __zm, _M_comp, _Cleanup(), _M_leaf_merge, _M_nsort,
                                   _M_x_beg, _M_z_beg, _x_orig, _y_orig, _root);
         __right_func._split = true;
-        auto __merge_task = __self->make_additional_child_of(__self->parent(), std::move(__right_func));
+        auto __merge_task = __self->make_additional_child_of(__self->parent(), ::std::move(__right_func));
         __self->spawn(__merge_task);
         __self->recycle_as_continuation();
 
@@ -1075,8 +1086,8 @@ operator()(__task* __self)
     {
         const _SizeType __nx = (_M_xe - _M_xs);
         const _SizeType __ny = (_M_ye - _M_ys);
-        _PSTL_ASSERT(__nx > 0);
-        _PSTL_ASSERT(__nx > 0);
+        assert(__nx > 0);
+        assert(__nx > 0);
 
         if (__nx < __ny)
             move_x_range();
@@ -1091,9 +1102,9 @@ template <typename _RandomAccessIterator1, typename _RandomAccessIterator2, type
 class __stable_sort_func
 {
   public:
-    typedef typename std::iterator_traits<_RandomAccessIterator1>::difference_type _DifferenceType1;
-    typedef typename std::iterator_traits<_RandomAccessIterator2>::difference_type _DifferenceType2;
-    typedef typename std::common_type<_DifferenceType1, _DifferenceType2>::type _SizeType;
+    typedef typename ::std::iterator_traits<_RandomAccessIterator1>::difference_type _DifferenceType1;
+    typedef typename ::std::iterator_traits<_RandomAccessIterator2>::difference_type _DifferenceType2;
+    typedef typename ::std::common_type_t<_DifferenceType1, _DifferenceType2> _SizeType;
 
   private:
     _RandomAccessIterator1 _M_xs, _M_xe, _M_x_beg;
@@ -1126,24 +1137,25 @@ __stable_sort_func<_RandomAccessIterator1, _RandomAccessIterator2, _Compare, _Le
                          __utils::__serial_move_merge>
         _MergeTaskType;
 
+    assert(_M_nsort > 0);
+
     const _SizeType __n = _M_xe - _M_xs;
-    const _SizeType __nmerge = _M_nsort > 0 ? _M_nsort : __n;
-    const _SizeType __sort_cut_off = _PSTL_STABLE_SORT_CUT_OFF;
+    const _SizeType __nmerge = ::std::min(_M_nsort, __n);
+    const _SizeType __sort_cut_off = _ONEDPL_STABLE_SORT_CUT_OFF;
     if (__n <= __sort_cut_off)
     {
         _M_leaf_sort(_M_xs, _M_xe, _M_comp);
-        _PSTL_ASSERT(!_M_root);
+        assert(!_M_root);
         return nullptr;
     }
 
     const _RandomAccessIterator1 __xm = _M_xs + __n / 2;
     const _RandomAccessIterator2 __zm = _M_zs + (__xm - _M_xs);
-    const _RandomAccessIterator2 __ze = _M_zs + __n;
     _MergeTaskType __m(_MergeTaskType(_M_xs - _M_x_beg, __xm - _M_x_beg, __xm - _M_x_beg, _M_xe - _M_x_beg,
                                       _M_zs - _M_z_beg, _M_comp, __utils::__serial_destroy(),
                                       __utils::__serial_move_merge(__nmerge), _M_nsort, _M_x_beg, _M_z_beg,
                                       /*x_orig*/ true, /*y_orig*/ true, /*root*/ _M_root));
-    auto __parent = __self->make_continuation(std::move(__m));
+    auto __parent = __self->make_continuation(::std::move(__m));
     __parent->set_ref_count(2);
     auto __right = __self->make_child_of(
         __parent, __stable_sort_func(__xm, _M_xe, __zm, false, _M_comp, _M_leaf_sort, _M_nsort, _M_x_beg, _M_z_beg));
@@ -1158,15 +1170,13 @@ __stable_sort_func<_RandomAccessIterator1, _RandomAccessIterator2, _Compare, _Le
 template <class _ExecutionPolicy, typename _RandomAccessIterator, typename _Compare, typename _LeafSort>
 void
 __parallel_stable_sort(__pstl::__internal::__tbb_backend_tag, _ExecutionPolicy&&, _RandomAccessIterator __xs,
-                       _RandomAccessIterator __xe, _Compare __comp, _LeafSort __leaf_sort, std::size_t __nsort = 0)
+                       _RandomAccessIterator __xe, _Compare __comp, _LeafSort __leaf_sort, ::std::size_t __nsort)
 {
     tbb::this_task_arena::isolate([=, &__nsort]() {
         //sorting based on task tree and parallel merge
-        typedef typename std::iterator_traits<_RandomAccessIterator>::value_type _ValueType;
-        typedef typename std::iterator_traits<_RandomAccessIterator>::difference_type _DifferenceType;
+        typedef typename ::std::iterator_traits<_RandomAccessIterator>::value_type _ValueType;
+        typedef typename ::std::iterator_traits<_RandomAccessIterator>::difference_type _DifferenceType;
         const _DifferenceType __n = __xe - __xs;
-        if (__nsort == __n)
-            __nsort = 0; // 'partial_sort' becames 'sort'
 
         const _DifferenceType __sort_cut_off = _PSTL_STABLE_SORT_CUT_OFF;
         if (__n > __sort_cut_off)
@@ -1214,9 +1224,9 @@ __task*
 __merge_func_static<_RandomAccessIterator1, _RandomAccessIterator2, _RandomAccessIterator3, __M_Compare, _LeafMerge>::
 operator()(__task* __self)
 {
-    typedef typename std::iterator_traits<_RandomAccessIterator1>::difference_type _DifferenceType1;
-    typedef typename std::iterator_traits<_RandomAccessIterator2>::difference_type _DifferenceType2;
-    typedef typename std::common_type<_DifferenceType1, _DifferenceType2>::type _SizeType;
+    typedef typename ::std::iterator_traits<_RandomAccessIterator1>::difference_type _DifferenceType1;
+    typedef typename ::std::iterator_traits<_RandomAccessIterator2>::difference_type _DifferenceType2;
+    typedef typename ::std::common_type_t<_DifferenceType1, _DifferenceType2> _SizeType;
     const _SizeType __n = (_M_xe - _M_xs) + (_M_ye - _M_ys);
     const _SizeType __merge_cut_off = _PSTL_MERGE_CUT_OFF;
     if (__n <= __merge_cut_off)
@@ -1230,12 +1240,12 @@ operator()(__task* __self)
     if (_M_xe - _M_xs < _M_ye - _M_ys)
     {
         __ym = _M_ys + (_M_ye - _M_ys) / 2;
-        __xm = std::upper_bound(_M_xs, _M_xe, *__ym, _M_comp);
+        __xm = ::std::upper_bound(_M_xs, _M_xe, *__ym, _M_comp);
     }
     else
     {
         __xm = _M_xs + (_M_xe - _M_xs) / 2;
-        __ym = std::lower_bound(_M_ys, _M_ye, *__xm, _M_comp);
+        __ym = ::std::lower_bound(_M_ys, _M_ye, *__xm, _M_comp);
     }
     const _RandomAccessIterator3 __zm = _M_zs + ((__xm - _M_xs) + (__ym - _M_ys));
     auto __right = __self->make_additional_child_of(
@@ -1255,9 +1265,9 @@ __parallel_merge(__pstl::__internal::__tbb_backend_tag, _ExecutionPolicy&&, _Ran
                  _RandomAccessIterator1 __xe, _RandomAccessIterator2 __ys, _RandomAccessIterator2 __ye,
                  _RandomAccessIterator3 __zs, _Compare __comp, _LeafMerge __leaf_merge)
 {
-    typedef typename std::iterator_traits<_RandomAccessIterator1>::difference_type _DifferenceType1;
-    typedef typename std::iterator_traits<_RandomAccessIterator2>::difference_type _DifferenceType2;
-    typedef typename std::common_type<_DifferenceType1, _DifferenceType2>::type _SizeType;
+    typedef typename ::std::iterator_traits<_RandomAccessIterator1>::difference_type _DifferenceType1;
+    typedef typename ::std::iterator_traits<_RandomAccessIterator2>::difference_type _DifferenceType2;
+    typedef typename ::std::common_type_t<_DifferenceType1, _DifferenceType2> _SizeType;
     const _SizeType __n = (__xe - __xs) + (__ye - __ys);
     const _SizeType __merge_cut_off = _PSTL_MERGE_CUT_OFF;
     if (__n <= __merge_cut_off)

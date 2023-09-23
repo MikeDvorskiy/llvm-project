@@ -19,3 +19,7 @@ D: Identifier name transformation for inclusion in a Standard C++ library.
 N: Christopher Nelson
 E: nadiasvertex@gmail.com
 D: Add support for an OpenMP backend.
+
+N: Mikhail Dvorskiy
+E: mikhail.dvorskiy@intel.com
+D: Bug fixes and minor improvements. Add shift_left, shift_right parallel overloads.

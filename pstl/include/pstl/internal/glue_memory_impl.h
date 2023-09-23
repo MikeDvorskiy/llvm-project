@@ -215,10 +215,11 @@ template <class _ExecutionPolicy, class _ForwardIterator>
 __pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, void>
 destroy(_ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last)
 {
-    typedef typename iterator_traits<_ForwardIterator>::value_type _ValueType;
-    typedef typename iterator_traits<_ForwardIterator>::reference _ReferenceType;
+    typedef typename ::std::iterator_traits<_ForwardIterator>::value_type _ValueType;
+    typedef typename ::std::iterator_traits<_ForwardIterator>::reference _ReferenceType;
 
     auto __dispatch_tag = __pstl::__internal::__select_backend(__exec, __first);
+    __parallel_tag<_IsVector>
 
     __pstl::__internal::__invoke_if_not(std::is_trivially_destructible<_ValueType>(),
                                         [&]()

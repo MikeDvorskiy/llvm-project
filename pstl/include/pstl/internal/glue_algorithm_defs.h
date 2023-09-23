@@ -154,17 +154,19 @@ swap_ranges(_ExecutionPolicy&& __exec, _ForwardIterator1 __first1, _ForwardItera
             _ForwardIterator2 __first2);
 
 // [alg.transform]
-
-template <class _ExecutionPolicy, class _ForwardIterator1, class _ForwardIterator2, class _UnaryOperation>
-__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _ForwardIterator2>
-transform(_ExecutionPolicy&& __exec, _ForwardIterator1 __first, _ForwardIterator1 __last, _ForwardIterator2 __result,
-          _UnaryOperation __op);
-
+// To workaround the Clang compiler (< 13.0) bug the order of these overload declarations
+// should be in the reversed order comparing with glue_algorithm_impl.h corresponding
+// definitions
 template <class _ExecutionPolicy, class _ForwardIterator1, class _ForwardIterator2, class _ForwardIterator,
           class _BinaryOperation>
 __pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _ForwardIterator>
 transform(_ExecutionPolicy&& __exec, _ForwardIterator1 __first1, _ForwardIterator1 __last1, _ForwardIterator2 __first2,
           _ForwardIterator __result, _BinaryOperation __op);
+
+template <class _ExecutionPolicy, class _ForwardIterator1, class _ForwardIterator2, class _UnaryOperation>
+__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _ForwardIterator2>
+transform(_ExecutionPolicy&& __exec, _ForwardIterator1 __first, _ForwardIterator1 __last, _ForwardIterator2 __result,
+          _UnaryOperation __op);
 
 // [alg.replace]
 
@@ -357,45 +359,52 @@ __pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _ForwardItera
 move(_ExecutionPolicy&& __exec, _ForwardIterator1 __first, _ForwardIterator1 __last, _ForwardIterator2 __d_first);
 
 // [partial.sort]
+// To workaround the Clang compiler (< 13.0) bug the order of these overload declarations
+// should be in the reversed order comparing with glue_algorithm_impl.h corresponding
+// definitions
+template <class _ExecutionPolicy, class _RandomAccessIterator>
+__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, void>
+partial_sort(_ExecutionPolicy&& __exec, _RandomAccessIterator __first, _RandomAccessIterator __middle,
+             _RandomAccessIterator __last);
 
 template <class _ExecutionPolicy, class _RandomAccessIterator, class _Compare>
 __pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, void>
 partial_sort(_ExecutionPolicy&& __exec, _RandomAccessIterator __first, _RandomAccessIterator __middle,
              _RandomAccessIterator __last, _Compare __comp);
 
-template <class _ExecutionPolicy, class _RandomAccessIterator>
-__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, void>
-partial_sort(_ExecutionPolicy&& __exec, _RandomAccessIterator __first, _RandomAccessIterator __middle,
-             _RandomAccessIterator __last);
-
 // [partial.sort.copy]
+// To workaround the Clang compiler (< 13.0) bug the order of these overload declarations
+// should be in the reversed order comparing with glue_algorithm_impl.h corresponding
+// definitions
+template <class _ExecutionPolicy, class _ForwardIterator, class _RandomAccessIterator>
+__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _RandomAccessIterator>
+partial_sort_copy(_ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last,
+                  _RandomAccessIterator __d_first, _RandomAccessIterator __d_last);
 
 template <class _ExecutionPolicy, class _ForwardIterator, class _RandomAccessIterator, class _Compare>
 __pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _RandomAccessIterator>
 partial_sort_copy(_ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last,
                   _RandomAccessIterator __d_first, _RandomAccessIterator __d_last, _Compare __comp);
 
-template <class _ExecutionPolicy, class _ForwardIterator, class _RandomAccessIterator>
-__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _RandomAccessIterator>
-partial_sort_copy(_ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last,
-                  _RandomAccessIterator __d_first, _RandomAccessIterator __d_last);
-
 // [is.sorted]
-template <class _ExecutionPolicy, class _ForwardIterator, class _Compare>
-__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _ForwardIterator>
-is_sorted_until(_ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last, _Compare __comp);
-
+// To workaround the Clang compiler (< 13.0) bug the order of these overload declarations
+// should be in the reversed order comparing with glue_algorithm_impl.h corresponding
+// definitions
 template <class _ExecutionPolicy, class _ForwardIterator>
-__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _ForwardIterator>
-is_sorted_until(_ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last);
+__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, bool>
+is_sorted(_ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last);
 
 template <class _ExecutionPolicy, class _ForwardIterator, class _Compare>
 __pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, bool>
 is_sorted(_ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last, _Compare __comp);
 
 template <class _ExecutionPolicy, class _ForwardIterator>
-__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, bool>
-is_sorted(_ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last);
+__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _ForwardIterator>
+is_sorted_until(_ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last);
+
+template <class _ExecutionPolicy, class _ForwardIterator, class _Compare>
+__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _ForwardIterator>
+is_sorted_until(_ExecutionPolicy&& __exec, _ForwardIterator __first, _ForwardIterator __last, _Compare __comp);
 
 // [alg.nth.element]
 
@@ -497,21 +506,24 @@ set_symmetric_difference(_ExecutionPolicy&& __exec, _ForwardIterator1 __first1, 
                          _ForwardIterator2 __first2, _ForwardIterator2 __last2, _ForwardIterator __result);
 
 // [is.heap]
-template <class _ExecutionPolicy, class _RandomAccessIterator, class _Compare>
-__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _RandomAccessIterator>
-is_heap_until(_ExecutionPolicy&& __exec, _RandomAccessIterator __first, _RandomAccessIterator __last, _Compare __comp);
-
+// To workaround the Clang compiler (< 13.0) bug the order of these overload declarations
+// should be in the reversed order comparing with glue_algorithm_impl.h corresponding
+// definitions
 template <class _ExecutionPolicy, class _RandomAccessIterator>
-__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _RandomAccessIterator>
-is_heap_until(_ExecutionPolicy&& __exec, _RandomAccessIterator __first, _RandomAccessIterator __last);
+__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, bool>
+is_heap(_ExecutionPolicy&& __exec, _RandomAccessIterator __first, _RandomAccessIterator __last);
 
 template <class _ExecutionPolicy, class _RandomAccessIterator, class _Compare>
 __pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, bool>
 is_heap(_ExecutionPolicy&& __exec, _RandomAccessIterator __first, _RandomAccessIterator __last, _Compare __comp);
 
 template <class _ExecutionPolicy, class _RandomAccessIterator>
-__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, bool>
-is_heap(_ExecutionPolicy&& __exec, _RandomAccessIterator __first, _RandomAccessIterator __last);
+__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _RandomAccessIterator>
+is_heap_until(_ExecutionPolicy&& __exec, _RandomAccessIterator __first, _RandomAccessIterator __last);
+
+template <class _ExecutionPolicy, class _RandomAccessIterator, class _Compare>
+__pstl::__internal::__enable_if_execution_policy<_ExecutionPolicy, _RandomAccessIterator>
+is_heap_until(_ExecutionPolicy&& __exec, _RandomAccessIterator __first, _RandomAccessIterator __last, _Compare __comp);
 
 // [alg.min.max]
 
